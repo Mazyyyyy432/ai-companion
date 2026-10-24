@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>美好时刻</title>
+<meta name="theme-color" content="#0b0709" />
+<link rel="stylesheet" href="/pages.css" />
+</head>
+<body>
+  <header class="top">
+    <span class="title">美好时刻</span>
+    <span class="spacer"></span>
+    <a href="/">聊天</a>
+    <a href="/contract.html">协议</a>
+  </header>
+
+  <div class="wrap">
+    <div class="form">
+      <input id="title" placeholder="一句话标题，比如「第一次说晚安」" maxlength="80" />
+      <textarea id="note" placeholder="想记住的细节…（可以不写）" maxlength="2000"></textarea>
+      <input id="file" type="file" accept="image/*" />
+      <div class="row">
+        <button class="primary" id="save">记下来</button>
+        <span class="when" id="hint"></span>
+      </div>
+    </div>
+
+    <div id="list"></div>
+  </div>
+
+  <script>
+    const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    let pendingImage = "";
+
+    document.getElementById("file").addEventListener("change", async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const hint = document.getElementById("hint");
+      hint.textContent = "上传中…";
+      const fd = new FormData();
+      fd.append("file", f);
+      try {
+        const r = await fetch("/api/upload", { method: "POST", body: fd });
+        const d = await r.json();
+        pendingImage = d.url || "";
+        hint.textContent = pendingImage ? "图片已附上" : "上传失败";
+      } catch {
+        hint.textContent = "上传失败";
+      }
+    });
+
+    document.getElementById("save").addEventListener("click", async () => {
+      const title = document.getElementById("title").value.trim();
+      if (!title) return;
+      await fetch("/api/moments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          note: document.getElementById("note").value.trim(),
+          image: pendingImage,
+        }),
+      });
+      document.getElementById("title").value = "";
+      document.getElementById("note").value = "";
+      document.getElementById("file").value = "";
+      document.getElementById("hint").textContent = "";
+      pendingImage = "";
+      render();
+    });
+
+    async function render() {
+      const r = await fetch("/api/moments", { cache: "no-store" });
+      if (r.status === 401) { location.href = "/login"; return; }
+      const d = await r.json();
+      const items = d.items || [];
+      const box = document.getElementById("list");
+
+      if (!items.length) {
+        box.innerHTML = '<div class="empty">还没有记下什么。<br>你们之间的第一件小事，就可以从这里开始。</div>';
+        return;
+      }
+
+      box.innerHTML = items
+        .map(
+          (m) => `<article class="moment">
+            <div class="when">${esc((m.ts || "").replace("T", " ").slice(0, 16))}</div>
+            <h3>${esc(m.title)}</h3>
+            ${m.note ? `<p>${esc(m.note)}</p>` : ""}
+            ${m.image ? `<img src="${esc(m.image)}" alt="" loading="lazy" />` : ""}
+          </article>`
+        )
+        .join("");
+    }
+
+    render();
+  </script>
+</body>
+</html>
