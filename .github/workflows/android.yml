@@ -22,13 +22,16 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      # GitHub 的 ubuntu runner 自带 Android SDK，不需要 setup-android。
+      # （那个 action 会尝试安装已被 Google 下架的 "tools" 包，必失败。）
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
+
+      - name: Show SDK
+        run: echo "ANDROID_HOME=$ANDROID_HOME"; ls "$ANDROID_HOME/platforms" || true
 
       - name: Build debug APK
         working-directory: android
