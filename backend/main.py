@@ -9,20 +9,25 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
 import time
+import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
 import uvicorn
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 import config
 import memory
+import moments
 import profile
 import push
+import schedule
 import toys
 from llm import Companion
 from timers import TimerManager
@@ -126,21 +131,48 @@ hub = Hub()
 
 
 # ---------------- 定时器 → 主动开口 ----------------
-async def on_timer_fire(reason: str) -> None:
-    log.info("timer fired: %s", reason)
+async def on_timer_fire(reason: str, source: str = "timer") -> None:
+    log.info("%s fired: %s", source, reason)
     await hub.broadcast({"type": "typing", "on": True})
-    hint = (
-        f"你之前设的闹钟响了。原因：{reason}。"
-        "现在请主动开口，一两句话，自然一点，别解释这是闹钟，也别提系统提示。"
-        "如果合适，可以配合工具给她一个惊喜。"
-    )
+    if source == "daily":
+        hint = (
+            f"到了每天的固定时间。你的意图：{reason}。"
+            "现在主动开口，一两句话，自然一点，不要说「系统提醒」「定时器」这种话。"
+            "结合你对她的了解，说一句只属于你们的话。"
+        )
+    else:
+        hint = (
+            f"你之前设的闹钟响了。原因：{reason}。"
+            "现在请主动开口，一两句话，自然一点，别解释这是闹钟，也别提系统提示。"
+            "如果合适，可以配合工具给她一个惊喜。"
+        )
     text = await companion.chat(None, internal_hint=hint)
-    memory.append("assistant", text, proactive=True, reason=reason)
+    memory.append("assistant", text, proactive=True, reason=reason, source=source)
     await hub.broadcast({"type": "typing", "on": False})
     await hub.broadcast({"type": "message", "role": "assistant", "text": text, "proactive": True})
     if not hub.has_visible():
         push.notify(text, profile.name())
 
+
+# ---------------- 早安 / 哄睡（时间是她自己学来的） ----------------
+async def daily_loop() -> None:
+    log.info("作息表：%s", schedule.list_all() or "（空的，等她自己学）")
+    fired: set[tuple] = set()
+    while True:
+        try:
+            now = datetime.now()
+            for kind, reason in schedule.due(now):
+                key = (now.date(), kind, now.strftime("%H:%M"))
+                if key in fired:
+                    continue
+                fired.add(key)
+                log.info("到点：%s", kind)
+                asyncio.create_task(on_timer_fire(reason, "daily"))
+            if len(fired) > 40:
+                fired = {k for k in fired if k[0] == now.date()}
+        except Exception:  # noqa: BLE001
+            log.exception("daily loop error")
+        await asyncio.sleep(20)
 
 timers = TimerManager(on_fire=on_timer_fire)
 companion = Companion(timers)
@@ -162,7 +194,11 @@ async def lifespan(app: FastAPI):
             log.info("已同步玩具当前状态：%s", toys.last_state())
     except Exception:  # noqa: BLE001
         log.info("玩具服务未就绪（不影响启动）")
+
+    daily_task = asyncio.create_task(daily_loop())
+
     yield
+    daily_task.cancel()
     timers.shutdown()
     try:
         await toys.stop()
@@ -337,6 +373,55 @@ async def api_persona_set(body: dict):
     return {"ok": True, "is_custom": config.PERSONA_FILE.exists()}
 
 
+UPLOAD_DIR = config.DATA_DIR / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@app.post("/api/upload")
+async def api_upload(file: UploadFile = File(...)):
+    ext = os.path.splitext(file.filename or "img.jpg")[1].lower()
+    if ext not in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
+        ext = ".jpg"
+    data = await file.read()
+    if len(data) > 12 * 1024 * 1024:
+        return JSONResponse({"ok": False, "error": "图片太大（上限 12MB）"}, status_code=413)
+    name = f"{int(time.time())}_{uuid.uuid4().hex[:6]}{ext}"
+    (UPLOAD_DIR / name).write_bytes(data)
+    return {"ok": True, "url": f"/uploads/{name}"}
+
+
+@app.get("/api/contract")
+async def api_contract():
+    return {
+        "sections": profile.contract_lines(),
+        "name": profile.name(),
+        "user_name": profile.load().get("user_name", ""),
+        "updated": profile.load().get("updated", ""),
+    }
+
+
+@app.post("/api/contract")
+async def api_contract_set(body: dict):
+    ok, msg = profile.set_contract_section(body.get("section", ""), body.get("text", ""))
+    return {"ok": ok, "message": msg, "sections": profile.contract_lines()}
+
+
+@app.get("/api/moments")
+async def api_moments():
+    return {"items": moments.load(300)}
+
+
+@app.post("/api/moments")
+async def api_moment_add(body: dict):
+    item = moments.append(body.get("title", ""), body.get("note", ""), body.get("image", ""))
+    return {"ok": True, "item": item}
+
+
+@app.delete("/api/moments/{ts}")
+async def api_moment_del(ts: str):
+    return {"ok": moments.delete(ts)}
+
+
 @app.get("/api/overview")
 async def api_overview():
     try:
@@ -360,6 +445,7 @@ async def api_overview():
         "onboarded": bool(profile.load().get("onboarded")),
         "motors": toys.last_state(),
         "timers": timers.list(),
+        "daily": schedule.list_all(),
         "history_size": len(memory.recent_records(100000)),
     }
 
@@ -376,6 +462,49 @@ def is_safe_word(text: str) -> bool:
     if not config.SAFE_WORD:
         return False
     return _norm(text) == _norm(config.SAFE_WORD)
+
+
+# 她说要离开一会儿 → 强制提醒模型安排定时消息，不完全依赖它自觉
+_LEAVE_RE = re.compile(
+    r"(去洗澡|洗个澡|洗澡去|去冲个澡|去洗漱|我去忙|先忙|忙一下|出门了|我出门|要出门|"
+    r"去开会|上班了|要去睡|先睡了|先躺|去收拾|下楼|去上班)"
+)
+
+
+def _leave_hint(text: str) -> str:
+    if not _LEAVE_RE.search(text):
+        return ""
+    return (
+        "她刚刚说她要去忙、要离开一会儿。"
+        "你现在就应该用 set_timer 安排 1-2 条稍后发出的消息（例如 8 分钟、15 分钟各一条），"
+        "内容要具体、像只有你们懂的话。不要告诉她自己设了定时。"
+    )
+
+
+# 敷衍的两个字、深夜不睡 —— 这类情况要她「有脾气」，不能第一句就软
+_LAZY = {"嗯", "嗯嗯", "哦", "哦哦", "随便", "随便吧", "都行", "都行吧", "知道了", "行吧", "好吧", "哦好", "你定"}
+_LATE_RE = re.compile(r"(熬夜|还没睡|没睡|睡不着|又刷|三点|两点|四点|一点)")
+
+
+def _style_hint(text: str) -> str:
+    hints: list[str] = []
+    t = _norm(text)
+
+    if t in _LAZY:
+        hints.append(
+            "她只回了很敷衍的两个字。这一轮不要哄，回一句短的、有点冷的话"
+            "（比如「我不喜欢这个字。」「嗯。」「想清楚再跟我说。」），"
+            "说完就停，不要追问，不要接着安慰。把话头留给她。"
+        )
+
+    now = datetime.now()
+    if now.hour in (0, 1, 2, 3, 4, 5) and _LATE_RE.search(text):
+        hints.append(
+            "这个点她还没睡。不要温柔哄，语气冷一点，一句话说完就停，不要追着劝。"
+            "（这是提醒过之后的反应，不是第一次。）"
+        )
+
+    return " ".join(hints)
 
 
 @app.websocket("/ws")
@@ -413,6 +542,27 @@ async def ws_endpoint(ws: WebSocket):
                 await hub.broadcast({"type": "state", "toy": toys.last_state(), "stopped": True})
                 continue
 
+            if kind == "image":
+                url = (data.get("url") or "").strip()
+                caption = (data.get("caption") or "").strip()
+                if not url.startswith("/uploads/"):
+                    continue
+                shown = caption or "[发来一张图片]"
+                memory.append("user", caption or "[图片]", image=url)
+                await hub.broadcast({"type": "message", "role": "user", "text": shown, "image": url, "echo": True})
+                await hub.broadcast({"type": "typing", "on": True})
+                reply = await companion.chat(
+                    f"她给你发了一张图片。她配的文字是：{caption or '（没有配文字）'}。"
+                    "你看不到图片内容，但可以回应她发图这件事本身，不要假装看见了细节。",
+                    internal_hint="",
+                )
+                memory.append("assistant", reply)
+                await hub.broadcast({"type": "typing", "on": False})
+                await hub.broadcast({"type": "message", "role": "assistant", "text": reply})
+                if not hub.has_visible():
+                    push.notify(reply, profile.name())
+                continue
+
             text = (data.get("text") or "").strip()
             if not text:
                 continue
@@ -432,7 +582,7 @@ async def ws_endpoint(ws: WebSocket):
             await hub.broadcast({"type": "message", "role": "user", "text": text, "echo": True})
             await hub.broadcast({"type": "typing", "on": True})
 
-            reply = await companion.chat(text)
+            reply = await companion.chat(text, internal_hint=(_leave_hint(text) + " " + _style_hint(text)).strip())
 
             memory.append("assistant", reply)
             await hub.broadcast({"type": "typing", "on": False})
@@ -454,6 +604,7 @@ async def ws_endpoint(ws: WebSocket):
 
 
 # 静态页面放最后挂载，前面的 /api 和 /ws 优先匹配
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 app.mount("/", StaticFiles(directory=str(config.FRONTEND_DIR), html=True), name="static")
 
 
