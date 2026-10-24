@@ -1,0 +1,42 @@
+name: build apk
+
+# 在 GitHub 的机器上编译安卓包，本地不需要装 Android SDK。
+# 用法：把仓库推到 GitHub → Actions → 选这个 workflow → Run workflow
+# 编好后在页面底部的 Artifacts 里下载 ai-companion-apk
+
+on:
+  push:
+    branches: [main]
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Build debug APK
+        working-directory: android
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-companion-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

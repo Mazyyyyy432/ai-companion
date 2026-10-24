@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>她 · 控制台</title>
+<link rel="stylesheet" href="/admin.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="dot" id="dot"></span><span id="brandName">她</span> <span class="sep">/</span> 控制台</div>
+    <div class="pills" id="pills"></div>
+    <div class="topActions">
+      <button id="refresh" class="ghost">刷新</button>
+      <a class="ghost" href="/" target="_blank" rel="noreferrer">手机端 ↗</a>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="card">
+      <h2>运行状态</h2>
+      <div class="status" id="status"></div>
+
+      <h3>马达</h3>
+      <div class="motors" id="motors"></div>
+
+      <h3>定时器 <span class="count" id="timerCount"></span></h3>
+      <ul class="timers" id="timers"><li class="none">没有等待中的定时器</li></ul>
+
+      <div class="btns">
+        <button id="stopAll" class="danger">全部停止</button>
+        <button id="testPush" class="ghost">测试推送</button>
+        <button id="clearHistory" class="ghost">清空历史</button>
+      </div>
+      <div class="toast" id="toast"></div>
+    </section>
+
+    <section class="card wide">
+      <div class="cardHead">
+        <h2>历史记录 <span class="count" id="hcount"></span></h2>
+        <div class="filters">
+          <input id="search" type="search" placeholder="筛选内容…" />
+          <label class="chk"><input type="checkbox" id="showTools" checked /> 工具调用</label>
+        </div>
+      </div>
+      <div class="list" id="list"></div>
+    </section>
+
+    <div class="col">
+      <section class="card">
+        <h2>资料</h2>
+        <div class="field">
+          <label for="pName">她的名字</label>
+          <input id="pName" type="text" maxlength="24" placeholder="她" />
+        </div>
+        <div class="field">
+          <label for="pUser">她怎么称呼你</label>
+          <input id="pUser" type="text" maxlength="24" placeholder="留空就让她自己问你" />
+        </div>
+        <div class="field">
+          <label for="pAgreement">关系约定</label>
+          <textarea id="pAgreement" class="small" spellcheck="false"
+            placeholder="初次见面时她会和你聊，聊完会自动写在这里"></textarea>
+        </div>
+        <div class="facts" id="pFacts"></div>
+        <div class="btns">
+          <button id="saveProfile" class="primary">保存资料</button>
+          <span class="hint" id="onboardState"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>人设</h2>
+        <p class="hint">这段文字作为 System Prompt 发给她。保存后下一次对话立即生效，不用重启。</p>
+        <textarea id="personaText" spellcheck="false"></textarea>
+        <div class="btns">
+          <button id="savePersona" class="primary">保存</button>
+          <button id="resetPersona" class="ghost">恢复默认</button>
+        </div>
+        <p class="hint" id="personaState"></p>
+      </section>
+    </div>
+  </main>
+
+  <script src="/admin.js"></script>
+</body>
+</html>

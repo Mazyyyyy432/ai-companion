@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>她</title>
+<meta name="theme-color" content="#0b0709" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="她" />
+<link rel="manifest" href="/manifest.json" />
+<link rel="apple-touch-icon" href="/icon-192.png" />
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="bar">
+    <div class="brand">
+      <span class="dot" id="dot" data-s="off"></span>
+      <span class="name">她</span>
+    </div>
+    <div class="chips" id="chips"></div>
+    <button class="iconbtn" id="bell" type="button" title="开启通知" aria-label="开启通知">🔔</button>
+    <button class="stop" id="stopBtn" type="button" aria-label="全部停止">停</button>
+  </header>
+
+  <main class="stream" id="stream" aria-live="polite">
+    <div class="empty" id="empty">
+      <strong>在的</strong>
+      说点什么，或者只是待一会儿
+    </div>
+  </main>
+
+  <footer class="composer">
+    <div class="offline" id="offline">正在连接电脑…</div>
+    <div class="row">
+      <textarea id="input" rows="1" placeholder="说点什么…" autocomplete="off"></textarea>
+      <button id="send" type="button" aria-label="发送">↑</button>
+    </div>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

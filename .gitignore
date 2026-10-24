@@ -1,0 +1,28 @@
+# ---- 运行环境 ----
+.venv/
+__pycache__/
+*.py[cod]
+
+# ---- 私密：绝对不要提交 ----
+.env
+data/profile.json
+data/persona.txt
+data/chat_history/*.jsonl
+data/push_subscriptions.json
+data/vapid_private.pem
+
+# ---- 大文件 / 第三方 ----
+vendor/
+frontend/apk/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+
+# ---- 日志 ----
+logs/*.log
+logs/*.txt
+
+# ---- 系统 ----
+.DS_Store
+Thumbs.db
