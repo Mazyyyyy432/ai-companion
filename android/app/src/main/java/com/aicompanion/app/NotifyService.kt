@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -22,17 +23,15 @@ import java.util.concurrent.TimeUnit
 /**
  * 后台提醒服务。
  *
- * 为什么不用 Web Push：安卓的网页推送走 Google 的 FCM，国内网络连不上，
- * 注册时直接报 "push service error"。所以这里自己保持一条 WebSocket 到电脑，
- * 收到她说的话就用系统通知弹出来——完全不依赖 Google。
- *
- * 代价是需要一个常驻通知（安卓对前台服务的硬性要求）。
+ * 安卓的网页推送走 Google 的 FCM，国内网络连不上，所以这里自己保持一条
+ * WebSocket 到电脑，收到她说的话就用系统通知弹出来——完全不依赖 Google。
  */
 class NotifyService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var ws: WebSocket? = null
     private var stopped = false
+    private var foregroundStarted = false
 
     private val client = OkHttpClient.Builder()
         .pingInterval(20, TimeUnit.SECONDS)
@@ -43,16 +42,23 @@ class NotifyService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        createChannel()
+        safe { createChannel() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            safe { stopForeground(true) }
             stopSelf()
             return START_NOT_STICKY
         }
-        startForeground(NOTIFY_ID_ONGOING, ongoingNotification())
-        connect()
+
+        // 先把自己变成前台服务；失败也绝不能让进程崩掉，否则 App 看起来就是“打不开”
+        safe {
+            startForeground(NOTIFY_ID_ONGOING, ongoingNotification())
+            foregroundStarted = true
+        }
+
+        safe { connect() }
         return START_STICKY
     }
 
@@ -74,11 +80,11 @@ class NotifyService : Service() {
         ws?.cancel()
         ws = client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                webSocket.send("""{"type":"focus","visible":false}""")
+                safe { webSocket.send("""{"type":"focus","visible":false}""") }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                try {
+                safe {
                     val obj = JSONObject(text)
                     if (obj.optString("type") == "message" &&
                         obj.optString("role") == "assistant" &&
@@ -87,7 +93,6 @@ class NotifyService : Service() {
                         val body = obj.optString("text", "").trim()
                         if (body.isNotEmpty()) notifyMessage(body)
                     }
-                } catch (_: Exception) {
                 }
             }
 
@@ -104,7 +109,7 @@ class NotifyService : Service() {
     private fun reconnectLater() {
         if (stopped) return
         handler.removeCallbacksAndMessages(null)
-        handler.postDelayed({ connect() }, 15_000)
+        handler.postDelayed({ safe { connect() } }, 15_000)
     }
 
     private fun notifyMessage(text: String) {
@@ -118,7 +123,13 @@ class NotifyService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val n = Notification.Builder(this, CHANNEL_MSG)
+        val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_MSG)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        val n = b
             .setContentTitle(name)
             .setContentText(text)
             .setStyle(Notification.BigTextStyle().bigText(text))
@@ -127,7 +138,7 @@ class NotifyService : Service() {
             .setContentIntent(open)
             .build()
 
-        nm.notify(text.hashCode(), n)
+        nm.notify(Math.abs(text.hashCode()), n)
     }
 
     private fun createChannel() {
@@ -157,21 +168,37 @@ class NotifyService : Service() {
             Notification.Builder(this)
         }
 
+        // 注意：不能传 null 图标，某些机型会直接抛异常把服务崩掉
+        val action = Notification.Action.Builder(
+            Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
+            "断开",
+            stop
+        ).build()
+
         return builder
             .setContentTitle("她")
             .setContentText("后台连接中")
-            .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
-            .addAction(Notification.Action.Builder(null, "断开", stop).build())
+            .addAction(action)
             .build()
     }
 
     override fun onDestroy() {
         stopped = true
         handler.removeCallbacksAndMessages(null)
-        ws?.close(1000, "bye")
+        safe { ws?.close(1000, "bye") }
         ws = null
         super.onDestroy()
+    }
+
+    /** 任何一处异常都不许冒泡，避免整个进程被系统判定为崩溃 */
+    private inline fun safe(block: () -> Unit) {
+        try {
+            block()
+        } catch (t: Throwable) {
+            android.util.Log.w("NotifyService", "ignored: ${t.message}")
+        }
     }
 
     companion object {
