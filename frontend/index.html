@@ -20,9 +20,16 @@
       <span class="name">她</span>
     </div>
     <div class="chips" id="chips"></div>
+    <button class="iconbtn" id="menuBtn" type="button" aria-label="更多">⋯</button>
     <button class="iconbtn" id="bell" type="button" title="开启通知" aria-label="开启通知">🔔</button>
     <button class="stop" id="stopBtn" type="button" aria-label="全部停止">停</button>
   </header>
+
+  <div class="menu" id="menu" hidden>
+    <a href="/contract.html">协议</a>
+    <a href="/moments.html">美好时刻</a>
+    <button type="button" id="menuPush">开启通知</button>
+  </div>
 
   <main class="stream" id="stream" aria-live="polite">
     <div class="empty" id="empty">
@@ -33,7 +40,13 @@
 
   <footer class="composer">
     <div class="offline" id="offline">正在连接电脑…</div>
+    <div class="preview" id="preview" hidden>
+      <img id="previewImg" alt="" />
+      <button type="button" id="previewClear" aria-label="移除">×</button>
+    </div>
     <div class="row">
+      <button class="attach" id="attachBtn" type="button" aria-label="发送图片">＋</button>
+      <input id="file" type="file" accept="image/*" hidden />
       <textarea id="input" rows="1" placeholder="说点什么…" autocomplete="off"></textarea>
       <button id="send" type="button" aria-label="发送">↑</button>
     </div>
