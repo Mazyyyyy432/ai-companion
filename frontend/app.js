@@ -52,12 +52,25 @@ function addDay(iso) {
   stream.appendChild(el);
 }
 
-function addMsg(text, who, iso) {
+function addMsg(text, who, iso, image) {
   const ts = iso || new Date().toISOString();
   addDay(ts);
   const el = document.createElement("div");
-  el.className = `msg ${who}`;
-  el.textContent = text;
+  el.className = `msg ${who}${image ? " hasimg" : ""}`;
+  if (image) {
+    const img = document.createElement("img");
+    img.src = image;
+    img.loading = "lazy";
+    img.alt = "";
+    el.appendChild(img);
+    if (text && text !== "[图片]") {
+      const cap = document.createElement("div");
+      cap.textContent = text;
+      el.appendChild(cap);
+    }
+  } else {
+    el.textContent = text;
+  }
   stream.appendChild(el);
 
   // 时间戳只在间隔较久时出现，避免每条都挂一个
@@ -133,7 +146,7 @@ async function syncHistory() {
     state.lastDay = "";
 
     for (const rec of d.records || []) {
-      if (rec.role === "user") addMsg(rec.content, "me", rec.ts);
+      if (rec.role === "user") addMsg(rec.content, "me", rec.ts, rec.meta && rec.meta.image);
       else if (rec.role === "assistant") addMsg(rec.content, "her", rec.ts);
       else if (rec.role === "tool") addTool(rec);
       else if (rec.role === "system") {
@@ -181,7 +194,55 @@ function connect() {
   try {
     state.ws = new WebSocket(wsUrl());
   } catch {
-    scheduleReconnect();
+    scheduleRe
+/* ---------------- 图片 ---------------- */
+let pendingImage = "";
+
+function clearPreview() {
+  pendingImage = "";
+  $("preview").hidden = true;
+  $("previewImg").removeAttribute("src");
+  $("file").value = "";
+}
+
+$("attachBtn").addEventListener("click", () => $("file").click());
+
+$("previewClear").addEventListener("click", clearPreview);
+
+$("file").addEventListener("change", async () => {
+  const f = $("file").files && $("file").files[0];
+  if (!f) return;
+  const fd = new FormData();
+  fd.append("file", f);
+  try {
+    const r = await fetch("/api/upload", { method: "POST", body: fd });
+    const d = await r.json();
+    if (d.url) {
+      pendingImage = d.url;
+      $("previewImg").src = d.url;
+      $("preview").hidden = false;
+    }
+  } catch (e) {
+    console.warn("upload failed", e);
+  }
+});
+
+/* ---------------- 菜单 ---------------- */
+$("menuBtn").addEventListener("click", () => {
+  $("menu").hidden = !$("menu").hidden;
+});
+
+document.addEventListener("click", (e) => {
+  const m = $("menu");
+  if (!m.hidden && !m.contains(e.target) && e.target.id !== "menuBtn") m.hidden = true;
+});
+
+$("menuPush").addEventListener("click", () => {
+  $("menu").hidden = true;
+  $("bell").click();
+});
+
+connect();
     return;
   }
 
@@ -221,7 +282,7 @@ function handle(d) {
   switch (d.type) {
     case "message":
       if (d.echo) {
-        addMsg(d.text, "me");
+        addMsg(d.text, "me", null, d.image);
       } else {
         setTyping(false);
         addMsg(d.text, "her");
@@ -240,6 +301,14 @@ function handle(d) {
 /* ---------------- 发送 / 停止 ---------------- */
 function send() {
   const text = input.value.trim();
+  if (pendingImage) {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+    state.ws.send(JSON.stringify({ type: "image", url: pendingImage, caption: text }));
+    clearPreview();
+    input.value = "";
+    autosize();
+    return;
+  }
   if (!text) return;
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
     offline.textContent = "还没连上电脑，等一下再发";
