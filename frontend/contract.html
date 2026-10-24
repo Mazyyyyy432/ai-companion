@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>协议</title>
+<meta name="theme-color" content="#0b0709" />
+<link rel="stylesheet" href="/pages.css" />
+</head>
+<body>
+  <header class="top">
+    <span class="title">协议</span>
+    <span class="spacer"></span>
+    <a href="/">聊天</a>
+    <a href="/moments.html">时刻</a>
+  </header>
+
+  <div class="wrap">
+    <article class="doc">
+      <h1>关 系 协 议</h1>
+      <div class="sub" id="sub">Agreement · 以自愿为前提</div>
+      <div class="rule"></div>
+      <div id="sections"></div>
+
+      <div class="sign">
+        <div><b id="signA">—</b>甲方 · 提议与守护</div>
+        <div><b id="signB">—</b>乙方 · 自愿与边界</div>
+      </div>
+    </article>
+  </div>
+
+  <div class="bar">
+    <button class="primary" id="editBtn">编辑</button>
+    <button id="saveBtn" hidden>保存</button>
+    <button onclick="window.print()">打印 / 存为 PDF</button>
+  </div>
+
+  <script>
+    const esc = (s) => String(s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+    let data = null;
+    let editing = false;
+
+    async function load() {
+      const r = await fetch("/api/contract", { cache: "no-store" });
+      if (r.status === 401) { location.href = "/login"; return; }
+      data = await r.json();
+      render();
+    }
+
+    function render() {
+      document.getElementById("signA").textContent = data.name || "她";
+      document.getElementById("signB").textContent = data.user_name || "我";
+      if (data.updated) {
+        document.getElementById("sub").textContent =
+          "Agreement · 最近更新 " + data.updated.replace("T", " ").slice(0, 16);
+      }
+
+      const box = document.getElementById("sections");
+      box.innerHTML = (data.sections || [])
+        .map((s) => {
+          const filled = (s.text || "").trim().length > 0;
+          const body = editing
+            ? `<textarea data-key="${s.key}" rows="${Math.max(3, Math.min(10, (s.text || "").split("\\n").length + 1))}">${esc(s.text)}</textarea>`
+            : `<p>${filled ? esc(s.text) : "尚未写下"}</p>`;
+          return `<section class="sec ${filled || editing ? "" : "empty"}">
+            <h2>${esc(s.title)}</h2>${body}
+          </section>`;
+        })
+        .join("");
+    }
+
+    document.getElementById("editBtn").addEventListener("click", () => {
+      editing = !editing;
+      document.getElementById("editBtn").hidden = editing;
+      document.getElementById("saveBtn").hidden = !editing;
+      render();
+    });
+
+    document.getElementById("saveBtn").addEventListener("click", async () => {
+      const areas = [...document.querySelectorAll("#sections textarea")];
+      for (const a of areas) {
+        await fetch("/api/contract", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ section: a.dataset.key, text: a.value }),
+        });
+      }
+      editing = false;
+      document.getElementById("editBtn").hidden = false;
+      document.getElementById("saveBtn").hidden = true;
+      await load();
+    });
+
+    load();
+  </script>
+</body>
+</html>
