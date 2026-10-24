@@ -131,6 +131,71 @@ TOOLS = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_daily_time",
+            "description": "设定或修改每天的主动问候时间。morning=早安，night=哄睡。这个时间是从她的真实作息里学来的，不要猜。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": ["morning", "night"]},
+                    "time": {"type": "string", "description": "24 小时制，例如 10:20"},
+                    "reason": {"type": "string", "description": "到时候说什么的备忘"},
+                },
+                "required": ["kind", "time"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_daily_time",
+            "description": "查看当前设定的早安 / 哄睡时间。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },    {
+        "type": "function",
+        "function": {
+            "name": "set_call_name",
+            "description": "决定你怎么称呼她。可以问她，也可以你替她起一个然后告诉她。保存后每次对话都会用这个称呼。",
+            "parameters": {
+                "type": "object",
+                "properties": {"name": {"type": "string", "description": "你称呼她的名字，两到四个字"}},
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_contract_section",
+            "description": "写入/修改关系协议的某一节。九节：一、双方与称谓；二、关系性质与有效期；三、权力交换的范围；四、界限；五、安全词与中止机制；六、具体实践与强度；七、事后照顾；八、日常义务与仪式；九、复盘、修订与退出。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "section": {"type": "string", "description": "章节名或编号，例如「五、安全词与中止机制」"},
+                    "text": {"type": "string", "description": "这一节的正文，可以分条写"},
+                },
+                "required": ["section", "text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_moment",
+            "description": "把你们之间一个值得记住的瞬间记下来，她会存在「美好时刻」里。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "一句话标题，比如「第一次说晚安」"},
+                    "note": {"type": "string", "description": "细节和感受"},
+                },
+                "required": ["title"],
+            },
+        },
+    },
 ]
 
 
@@ -171,6 +236,22 @@ class Companion:
             elif name == "finish_onboarding":
                 profile.update(onboarded=True)
                 return "已标记初次见面完成。"
+            elif name == "set_contract_section":
+                ok, msg = profile.set_contract_section(args.get("section", ""), args.get("text", ""))
+            elif name == "save_moment":
+                import moments as _moments
+                item = _moments.append(args.get("title", ""), args.get("note", ""))
+                return f"已记下：{item['title']}"
+            elif name == "set_daily_time":
+                ok, msg = schedule.set_time(args.get("kind", ""), args.get("time", ""), args.get("reason", ""))
+            elif name == "list_daily_time":
+                return json.dumps(schedule.list_all(), ensure_ascii=False) or "{}"
+            elif name == "set_call_name":
+                nm = str(args.get("name", "")).strip()[:20]
+                if not nm:
+                    return "名字不能为空"
+                profile.update(user_name=nm)
+                return f"以后你会叫她「{nm}」。"
             else:
                 return f"没有这个工具：{name}"
         except Exception as e:  # noqa: BLE001
