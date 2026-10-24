@@ -72,8 +72,13 @@ class MainActivity : Activity() {
     private fun startNotifyService() {
         val url = getSharedPreferences("app", Context.MODE_PRIVATE).getString("url", "").orEmpty()
         if (url.isBlank()) return
-        val intent = Intent(this, NotifyService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
+        try {
+            val intent = Intent(this, NotifyService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
+        } catch (t: Throwable) {
+            // 后台服务起不来也不能让 App 打不开
+            android.util.Log.w("MainActivity", "service start failed: ${t.message}")
+        }
     }
 
     private fun askForUrl() {
