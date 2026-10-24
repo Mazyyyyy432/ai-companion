@@ -11,8 +11,8 @@ android {
         applicationId = "com.aicompanion.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
 
     buildTypes {
@@ -32,5 +32,6 @@ android {
 }
 
 dependencies {
-    // 只用系统 WebView，不引入任何第三方库
+    // WebSocket 客户端 + JSON（界面仍然用系统 WebView，不引入 UI 库）
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
